@@ -83,8 +83,11 @@ export const TIMINGS = {
   commandAnswerBy: 4300,
   /** The identity read before a stop: short, a stop never waits long for it. */
   stopIdentityTimeout: 1200,
-  /** Reads after a command (a valve opens or closes within seconds). */
-  followUps: [5000, 15_000, 30_000],
+  /**
+   * Reads after a command (a valve opens or closes within seconds); the last
+   * one falls inside the 60 s a stop guard watches (a start applied late).
+   */
+  followUps: [5000, 15_000, 30_000, 55_000],
   /**
    * After a start that may have left, no other start on the controller until
    * a read sent after it shows the zone watering, or this long after it.

@@ -339,3 +339,38 @@ test('H18: YC, start answered 2xx at once, its task listed 3 s later, stop in be
   );
   assert.deepEqual(net.table[YC_HOST].tasks, []);
 });
+
+test('N1: a stop guard armed again is read at 5, 15, 30 and 55 s, within its minute', async (t) => {
+  const delays = [];
+  const recording = {
+    setInterval: () => 1,
+    clearInterval: () => {},
+    setTimeout: (_fn, ms) => {
+      delays.push(ms);
+      return 1;
+    },
+    clearTimeout: () => {},
+  };
+  const net = fakeNetwork();
+  const gladys = createFakeGladys({
+    selector: SELECTOR,
+    config: { address: HOST, access_token: TOKEN },
+    devices: [],
+  });
+  const logger = { debug() {}, info() {}, warn() {}, error() {} };
+  const app = new YardianApp({
+    gladys,
+    logger,
+    client: new YardianClient({ request: net.request }),
+    store: new MemoryStore(),
+    timers: recording,
+  });
+  registerHandlers(gladys, app, logger);
+  await gladys.connect();
+  t.after(() => app.stop());
+  delays.length = 0;
+  await press(gladys, controllerId(), 'stop');
+  const followUps = delays.filter((ms) => ms >= 5000);
+  assert.deepEqual(followUps, [5000, 15_000, 30_000, 55_000]);
+  assert.ok(Math.max(...followUps) < 60_000);
+});

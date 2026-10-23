@@ -10,6 +10,11 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+### Fixed
+
+- After a command, a fourth follow-up read at 55 s: a start applied late is
+  seen within the minute a stop watches it, whatever the refresh interval.
+
 ## [0.1.1] - 2026-10-23
 
 ### Added
