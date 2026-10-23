@@ -43,8 +43,9 @@
   by its yid, or by its serial when one side has no yid. Only a differing yid
   (or serial, when one side has no yid) is "another controller"; an answer
   with no field in common with the record (a yid on one side, a serial on the
-  other) at its address is the same controller, its fields merged (review 1,
-  M1). An answer with neither is a failed read. Checked at every read and
+  other) at its address proves nothing: its states are taken for the record
+  there, a stop is sent, a start is refused, and the identifiers are merged
+  only on proof (review 1 M1, approval 1 M7). An answer with neither is a failed read. Checked at every read and
   before every command. An answer without a model keeps the known API family
   (M2).
 - External ids: `yardian:<id>` for the controller, `yardian-zone:<id>-<n>` for
@@ -81,6 +82,9 @@
   5xx, silence), the stop guard is armed again from that point and the
   follow-up reads start again, so the stop is resent if the zone waters
   (review 1, B1; also a YC stop that found no task while a start was out).
+  A guard armed again this way is "sticky": a dry read never lifts it (the
+  controller may apply the start seconds later), only its end, 60 s after
+  the start settled; at most 3 resends meanwhile (approval 1).
 - Stop guard (protective kind): the follow-up reads that still see its zones
   watering send it again, at most 3 times within 60 s (counted in memory;
   a resend never extends the guard), unless a start the controller answered

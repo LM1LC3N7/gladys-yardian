@@ -57,8 +57,8 @@ programmateur n'a pas de https).
   lecture les montre). Sur un C1 avec plus de 32 arrosages en cours, ou
   certains illisibles, les arrosages lisibles (32 au plus) sont arrêtés.
 - Un arrêt annule les démarrages pas encore envoyés. Un démarrage déjà parti
-  avant l'arrêt est surveillé aussi : s'il est appliqué après l'arrêt,
-  l'arrêt est renvoyé. Si les zones sont encore lues en arrosage après un
+  avant l'arrêt est surveillé aussi, pendant une minute après sa réponse :
+  s'il est appliqué après l'arrêt dans cette minute, l'arrêt est renvoyé. Si les zones sont encore lues en arrosage après un
   arrêt, il est renvoyé (3 fois au plus, dans la minute), sauf si un
   démarrage accepté par le programmateur est parti après lui.
 - Sur les Yardian et Yardian Pro sans le suffixe C1, le programmateur n'arrête

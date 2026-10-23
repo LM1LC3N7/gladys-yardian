@@ -603,6 +603,7 @@ export class YardianApp {
   remember(identity, host, zones) {
     const devices = this.data.devices;
     const existing = this.recordOf(identity, host);
+    const proven = !existing || sameController(identity, existing) === true;
     if (!existing && Object.keys(devices).length >= LIMITS.devices) {
       // The oldest one not at this address makes room.
       const oldest = this.records.find((r) => r.host !== host);
@@ -626,8 +627,9 @@ export class YardianApp {
     }
     const record = {
       id: existing?.id ?? identity.id,
-      yid: identity.yid ?? existing?.yid,
-      serial: identity.serial ?? existing?.serial,
+      // The identifiers are merged only on proof (the same yid or serial).
+      yid: proven ? (identity.yid ?? existing?.yid) : existing.yid,
+      serial: proven ? (identity.serial ?? existing?.serial) : existing.serial,
       host,
       family: this.familyFor(identity, existing),
       model: identity.model || existing?.model || '',
@@ -1095,6 +1097,8 @@ export class YardianApp {
     guard.at = this.now();
     guard.until = Math.max(guard.until, this.now() + TIMINGS.stopGuard);
     guard.resends = 0;
+    // Lifted by time only (60 s): follow-up reads, at most 3 resends.
+    guard.sticky = true;
     this.logger.info(
       `Yardian ${record.id}: a start sent before the stop settled, stop watched again`,
     );
@@ -1174,7 +1178,14 @@ export class YardianApp {
       this.unguard(record, 'stop', guard);
       return false;
     }
-    if (active && YardianApp.after(guard, origin) && !stillWatering(guard.zones, active)) {
+    // Armed again by a start that may have left: a dry read proves nothing
+    // (the controller may apply it seconds later), only time lifts it.
+    if (
+      !guard.sticky &&
+      active &&
+      YardianApp.after(guard, origin) &&
+      !stillWatering(guard.zones, active)
+    ) {
       this.unguard(record, 'stop', guard);
       return false;
     }
@@ -1242,9 +1253,12 @@ export class YardianApp {
       ({ info: identity } = await this.client.deviceInfo(host, token, options()));
       identity = identityOf(identity);
       if (!identity.id) throw this.refusal(ERRORS.unknownState);
+      const same = sameController(identity, record);
       // No field in common (a yid on one side, a serial on the other):
-      // nothing contradicts, the same controller.
-      if (sameController(identity, record) === false) {
+      // nothing contradicts, nothing proves. A valve is opened only on proof
+      // (a stop still goes in that case).
+      if (same === undefined) throw this.refusal(ERRORS.identityUnproven);
+      if (same === false) {
         if (ticket.generation === this.generation && record.host === host) {
           this.logger.warn(`Yardian ${record.id} no longer answers at its address`);
           this.moved = [record.id, identity.id];
@@ -1418,6 +1432,10 @@ export class YardianApp {
       seq: this.nextSequence(),
       until: this.now() + TIMINGS.stopGuard,
     };
+    if (live?.sticky) {
+      // Still watching a start that may have left: kept until its end.
+      guard.sticky = true;
+    }
     this.data.guards[record.id] = { ...this.data.guards[record.id], stop: guard };
     return guard;
   }

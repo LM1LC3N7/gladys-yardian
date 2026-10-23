@@ -50,8 +50,8 @@ https).
   waterings running, or some unreadable, the readable ones (32 at most) are
   stopped.
 - A stop cancels the starts not sent yet. A start already sent before the
-  stop is watched too: if it is applied after the stop, the stop is sent
-  again. If the zones are still read watering after a stop, it is sent again
+  stop is watched too, for a minute after its answer: if it is applied
+  after the stop within that minute, the stop is sent again. If the zones are still read watering after a stop, it is sent again
   (3 times at most, within a minute), unless a start the controller took was
   sent after it.
 - On the Yardian and Yardian Pro without the C1 suffix, the controller only

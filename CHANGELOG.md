@@ -29,12 +29,14 @@ the notes of the version's GitHub Release.
   its address, no token is set, or the running waterings of a C1 model cannot
   be read (then it is sent as soon as a read shows them, within a minute).
 - A start sent before a stop but applied after it is caught: the stop keeps
-  watching until that start settles, then is sent again if the zone waters.
+  watching until that start settles, then for a minute (a dry read does not
+  end that watch), and is sent again if the zone waters (3 times at most).
 - On a C1 model with more than 32 running waterings, or unreadable ones, the
   readable ones (32 at most) are stopped.
 - An answer giving only the serial number of a controller known by its yid
-  (or the reverse) is the same controller; an answer without a model keeps
-  the known API family.
+  (or the reverse) is not "another controller": a stop is sent, a start is
+  refused, and the identifiers are merged only once an answer proves them;
+  an answer without a model keeps the known API family.
 - Reads never sooner than the interval, even after a restart; 429/5xx pauses
   and refused tokens persisted in /data (a salted fingerprint, never the
   token); a "Check the controller" button.

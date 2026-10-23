@@ -175,6 +175,10 @@ export const ERRORS = {
       `Commande envoyée, sans confirmation (${reason}) : vérifiez la zone dans quelques secondes.`,
     ),
   notSeen: both('not read back yet', 'pas encore relue'),
+  identityUnproven: both(
+    'The controller did not give the identifier it is known by (yid or serial number): nothing sent. A stop is still sent in that case.',
+    "Le programmateur n'a pas donné l'identifiant sous lequel il est connu (yid ou numéro de série) : rien n'a été envoyé. Un arrêt part quand même dans ce cas.",
+  ),
   stopTasksUnknown: both(
     'The waterings running could not be read (C1 models stop them one by one): nothing sent yet. Gladys watches for a minute and sends the stop as soon as a read shows them; otherwise stop from the Yardian app.',
     "Les arrosages en cours n'ont pas pu être lus (les modèles C1 les arrêtent un par un) : rien n'a encore été envoyé. Gladys surveille pendant une minute et envoie l'arrêt dès qu'une lecture les montre ; sinon, arrêtez depuis l'application Yardian.",

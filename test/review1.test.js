@@ -177,7 +177,7 @@ test('a start that left AFTER the stop is not stopped again', async (t) => {
   assert.deepEqual(net.table[HOST].active, [1]);
 });
 
-test('H4/M1: known by yid only, then an answer with the serial only: the same controller', async (t) => {
+test('H4/M1/M7: known by yid only, then the serial only: stop goes, start refused, no merge', async (t) => {
   const now = clock();
   const net = fakeNetwork();
   net.table[HOST].info = { name: 'Garden', model: 'PRO1902', yid: YID };
@@ -187,12 +187,21 @@ test('H4/M1: known by yid only, then an answer with the serial only: the same co
   const stop = await press(gladys, controllerId(), 'stop');
   assert.equal(stop.success, true, stop.error);
   const start = await press(gladys, zoneId(2), 'start');
-  assert.equal(start.success, true, start.error);
-  assert.equal(app.data.devices[YID].host, HOST);
+  assert.equal(start.success, false);
+  assert.match(start.error, /identifiant sous lequel il est connu/);
+  assert.deepEqual(events(net), ['AE_IRR_STOP_INST_TASK']);
+  assert.equal(app.data.devices[YID].host, HOST, 'never "moved" on no proof');
   now.advance(30_000);
   await app.tick();
   assert.deepEqual(Object.keys(app.data.devices), [YID], 'no sn-… record');
-  assert.equal(app.data.devices[YID].serial, 'SN0001', 'the fields merged');
+  assert.equal(app.data.devices[YID].serial, undefined, 'merged only on proof');
+  // A proof (the yid and the serial together): merged, and starts allowed.
+  net.table[HOST].info = { name: 'Garden', model: 'PRO1902', yid: YID, serialNumber: 'SN0001' };
+  now.advance(30_000);
+  await app.tick();
+  assert.equal(app.data.devices[YID].serial, 'SN0001');
+  const later = await press(gladys, zoneId(2), 'start');
+  assert.equal(later.success, true, later.error);
 });
 
 test('a yid that differs is another controller: stop refused, nothing sent', async (t) => {
@@ -257,4 +266,76 @@ test('M6: the guards are on disk before the first byte', async (t) => {
   assert.deepEqual(saved[YID].start.zones, [1]);
   await press(gladys, zoneId(1), 'stop');
   assert.deepEqual(saved[YID].stop.zones, [1]);
+});
+
+test('H16: YP, the start answer times out, the controller applies it 12 s later: the stop is sent again', async (t) => {
+  const now = clock();
+  const net = fakeNetwork();
+  let open;
+  const gate = new Promise((resolve) => {
+    open = resolve;
+  });
+  const request = async (options) => {
+    if (ypStart(options)) {
+      options.beforeSend?.();
+      await gate;
+      throw new YardianError('timeout', { sent: true });
+    }
+    return net.request(options);
+  };
+  const { gladys, app } = await setup(t, { now, net, request, config: { allow_start: true } });
+  const start = press(gladys, zoneId(1), 'start');
+  await tick();
+  await press(gladys, controllerId(), 'stop');
+  open();
+  await start;
+  await followUps(app, now, [5_000]);
+  assert.ok(
+    app.data.guards[YID].stop,
+    'a dry read does not lift a guard armed by a start that may have left',
+  );
+  net.table[HOST].active = [0]; // applied late by the controller
+  await followUps(app, now, [7_000]);
+  assert.deepEqual(net.table[HOST].active, []);
+  assert.deepEqual(events(net), ['AE_IRR_STOP_INST_TASK', 'AE_IRR_STOP_INST_TASK']);
+  // Lifted by time only.
+  await followUps(app, now, [60_000]);
+  assert.equal(app.data.guards[YID]?.stop, undefined);
+});
+
+test('H18: YC, start answered 2xx at once, its task listed 3 s later, stop in between: stopped', async (t) => {
+  const now = clock();
+  const net = fakeNetwork();
+  let open;
+  const gate = new Promise((resolve) => {
+    open = resolve;
+  });
+  const request = async (options) => {
+    if (options.method === 'POST' && options.path === '/res/inst-program') {
+      options.beforeSend?.();
+      await gate;
+      return { status: 200, headers: {}, body: Buffer.from('{}') };
+    }
+    return net.request(options);
+  };
+  const { gladys, app } = await setup(t, {
+    now,
+    net,
+    request,
+    config: { address: YC_HOST, allow_start: true },
+  });
+  const start = press(gladys, zoneId(1, YC_ID), 'start');
+  await tick();
+  const stop = await press(gladys, controllerId(YC_ID), 'stop');
+  assert.equal(stop.success, true, stop.error);
+  open();
+  await start;
+  now.advance(3_000);
+  net.table[YC_HOST].tasks.push({ id: 300, output_id: 0 });
+  await followUps(app, now, [2_000, 10_000, 15_000]);
+  assert.deepEqual(
+    net.commands().map((c) => `${c.method} ${c.path}`),
+    ['PATCH /res/running-task/300?action=stop'],
+  );
+  assert.deepEqual(net.table[YC_HOST].tasks, []);
 });

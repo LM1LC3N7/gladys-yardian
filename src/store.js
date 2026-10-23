@@ -85,6 +85,8 @@ function guardOf(guard, now, longest) {
     // Unknown or in the future: now, the safe side.
     at: Number.isFinite(guard.at) ? Math.min(guard.at, now) : now,
     until: Math.min(guard.until, now + longest),
+    // A stop guard armed again by a start that may have left: lifted by time only.
+    ...(guard.sticky === true ? { sticky: true } : {}),
   };
 }
 
