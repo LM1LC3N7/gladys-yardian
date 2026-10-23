@@ -46,6 +46,7 @@ async function setup(
     devices = [],
     now = clock(),
     appTimers = timers,
+    request,
   } = {},
 ) {
   const fullConfig = { address: HOST, access_token: TOKEN, ...config };
@@ -60,7 +61,7 @@ async function setup(
   const app = new YardianApp({
     gladys,
     logger,
-    client: new YardianClient({ request: net.request, now }),
+    client: new YardianClient({ request: request ?? net.request, now }),
     store,
     timers: appTimers,
     now,

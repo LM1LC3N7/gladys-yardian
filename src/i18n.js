@@ -175,4 +175,8 @@ export const ERRORS = {
       `Commande envoyée, sans confirmation (${reason}) : vérifiez la zone dans quelques secondes.`,
     ),
   notSeen: both('not read back yet', 'pas encore relue'),
+  stopTasksUnknown: both(
+    'The waterings running could not be read (C1 models stop them one by one): nothing sent yet. Gladys watches for a minute and sends the stop as soon as a read shows them; otherwise stop from the Yardian app.',
+    "Les arrosages en cours n'ont pas pu être lus (les modèles C1 les arrêtent un par un) : rien n'a encore été envoyé. Gladys surveille pendant une minute et envoie l'arrêt dès qu'une lecture les montre ; sinon, arrêtez depuis l'application Yardian.",
+  ),
 };

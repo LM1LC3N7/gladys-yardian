@@ -9,7 +9,10 @@ HTTP API (no cloud). Not affiliated with Aeon Matrix or Yardian.
 - Each enabled zone: watering now, "Start watering" and "Stop watering"
   buttons (never a switch).
 - **Starting a zone is off by default** (it opens a valve); the watering
-  length is capped at 60 minutes; stopping is never refused.
+  length is capped at 60 minutes; stopping is never held by the option, a
+  pause, a refused token or a recent start (it is refused unsent only when
+  another controller answers, without a token, or when a C1 model's running
+  waterings cannot be read: see the guides).
 
 Never tested with a real device: built from
 [pyyardian](https://pypi.org/project/pyyardian/) 1.4.2 (MIT, Aeon Matrix), the

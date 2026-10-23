@@ -45,13 +45,22 @@ programmateur n'a pas de https).
   arrosage : rien n'est envoyé. La zone arrose pendant la durée réglée (10
   minutes par défaut, **60 minutes au plus**) ; le programmateur referme seul
   la vanne à la fin.
-- Après un démarrage, un autre démarrage sur le même programmateur attend que
-  la zone soit lue en arrosage, ou 60 s.
-- **Arrêter n'est jamais refusé** : ni par l'option, ni par une pause demandée
-  par le programmateur, ni par un jeton refusé, ni par un démarrage récent. Un
-  arrêt annule les démarrages pas encore envoyés. Si les zones sont encore
-  lues en arrosage après lui, l'arrêt est renvoyé (3 fois au plus, dans les
-  60 s), sauf si un démarrage accepté par le programmateur est parti après.
+- Après un démarrage, un autre démarrage sur le même programmateur est
+  **refusé tout de suite** (« Réessayez dans une minute ») tant que la zone
+  n'est pas lue en arrosage, 60 s au plus.
+- **Arrêter n'est jamais bloqué** par l'option, une pause demandée par le
+  programmateur, un jeton refusé ni un démarrage récent. L'arrêt est refusé,
+  sans rien envoyer, seulement si : un autre programmateur répond à l'adresse ;
+  le programmateur n'est plus à son adresse ; aucun jeton d'accès n'est
+  saisi ; sur les modèles C1, les arrosages en cours ne peuvent pas être lus
+  (Gladys surveille alors pendant une minute et envoie l'arrêt dès qu'une
+  lecture les montre). Sur un C1 avec plus de 32 arrosages en cours, ou
+  certains illisibles, les arrosages lisibles (32 au plus) sont arrêtés.
+- Un arrêt annule les démarrages pas encore envoyés. Un démarrage déjà parti
+  avant l'arrêt est surveillé aussi : s'il est appliqué après l'arrêt,
+  l'arrêt est renvoyé. Si les zones sont encore lues en arrosage après un
+  arrêt, il est renvoyé (3 fois au plus, dans la minute), sauf si un
+  démarrage accepté par le programmateur est parti après lui.
 - Sur les Yardian et Yardian Pro sans le suffixe C1, le programmateur n'arrête
   que **toutes les zones à la fois** : le bouton Arrêter d'une zone les arrête
   toutes.
@@ -75,4 +84,8 @@ vite que l'intervalle).
 - Un seul programmateur par intégration.
 - Les modèles YC (suffixe C1) et les champs du report pour pluie et de la
   veille n'ont pas été vus sur une vraie réponse : voir TODO.md dans le dépôt.
+- Un arrosage lancé par un programme du programmateur : rien ne dit que
+  l'arrêt de l'API Yardian l'arrête (inconnu). Sinon, vous verrez « envoyée,
+  sans confirmation », puis 3 renvois : arrêtez-le depuis l'application
+  Yardian.
 - Pas encore de programmes, d'actions de scène ni de widget.

@@ -40,9 +40,13 @@
   safety of LM1LC3N7/gladys-opengarage (approved, published).
 - Identity rule (frozen, it fixes the external ids): the `yid`, or
   `sn-<serialNumber>` when there is no yid; the same controller is recognized
-  by its yid, or by its serial when one side has no yid. An answer with
-  neither is a failed read, never "another controller". Checked at every read
-  and before every command.
+  by its yid, or by its serial when one side has no yid. Only a differing yid
+  (or serial, when one side has no yid) is "another controller"; an answer
+  with no field in common with the record (a yid on one side, a serial on the
+  other) at its address is the same controller, its fields merged (review 1,
+  M1). An answer with neither is a failed read. Checked at every read and
+  before every command. An answer without a model keeps the known API family
+  (M2).
 - External ids: `yardian:<id>` for the controller, `yardian-zone:<id>-<n>` for
   zone n (1-based, the API id is n - 1). Feature keys: `watering`,
   `current_zone`, `rain_delay`, `standby`, `stop`; zone: `watering`, `start`,
@@ -51,9 +55,10 @@
   `unknown`/`binary`: no "turn everything on/off" reaches a valve.
 - Start = sensitive (opens a valve): off by default, option checked on
   arrival, after the fresh reads and in `beforeSend`; sent within 3.5 s;
-  one queue per controller; a guard (start kind) set in `beforeSend` and
-  persisted, lifted by a read sent after it showing the zone watering, or
-  60 s; refused by the controller (token, 4xx, 429, negative iCode): no
+  one queue per controller; a guard (start kind) saved to /data (awaited)
+  before the connection, its request number set in `beforeSend`, lifted by a
+  read sent after it showing the zone watering, or 60 s (a second start is
+  refused at once meanwhile); refused by the controller (token, 4xx, 429, negative iCode): no
   guard, never counts as a newer start; 5xx or silence: "sent, without
   confirmation", the guard stays.
 - Watering length: the configured minutes (default 10, 1 to 60), capped at 60
@@ -64,7 +69,18 @@
   paused; another controller answering: refused; no answer or unreadable: the
   stop leaves (in doubt, the stop goes). YP: one request stops every zone
   (the API has no stop by zone). YC: the running tasks are read, then one
-  PATCH per task, all at once, each checked against its deadline.
+  PATCH per task, all at once, each checked against its deadline; the YC API
+  has no stop of every zone, so with more than 32 tasks or unreadable entries
+  the readable ones (32 at most) are stopped (M3); tasks unreadable: refused
+  unsent, but the stop guard is set and the follow-up reads send it.
+  Refused unsent only: another controller, no longer at its address, no
+  token, YC tasks unreadable (documented, review 1 I1). The stop guard is on
+  disk (awaited) before its first byte (M6).
+- A start that LEFT before a stop and is not settled keeps the stop guard
+  from being lifted (10 s at most); when it settles as "may have left" (2xx,
+  5xx, silence), the stop guard is armed again from that point and the
+  follow-up reads start again, so the stop is resent if the zone waters
+  (review 1, B1; also a YC stop that found no task while a start was out).
 - Stop guard (protective kind): the follow-up reads that still see its zones
   watering send it again, at most 3 times within 60 s (counted in memory;
   a resend never extends the guard), unless a start the controller answered

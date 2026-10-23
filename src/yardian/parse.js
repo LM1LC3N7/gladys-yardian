@@ -69,14 +69,19 @@ export function identityOf(info) {
 }
 
 /**
- * Whether an identity is the controller of a record: the same yid, or the
- * same serial number when one of them has no yid. Missing on both: no.
+ * Whether an identity is the controller of a record: true for the same yid
+ * (or, when one side has no yid, the same serial number), false for a
+ * different one, undefined when they have no field in common (a yid on one
+ * side, a serial number on the other): nothing contradicts, nothing proves.
  */
 export function sameController(identity, record) {
   if (identity.yid && record.yid) {
     return identity.yid === record.yid;
   }
-  return Boolean(identity.serial && record.serial && identity.serial === record.serial);
+  if (identity.serial && record.serial) {
+    return identity.serial === record.serial;
+  }
+  return undefined;
 }
 
 const zoneName = (value, number) => cleanText(value, 64) || `Zone ${number}`;
@@ -151,6 +156,38 @@ export function ycTasksOf(result) {
     tasks.push({ id, zone });
   }
   return { active: new Set(tasks.map((t) => t.zone)), tasks };
+}
+
+/**
+ * YC, for a stop only: the readable tasks of /res/running-task, even when
+ * some entry is unreadable or there are more than LIMITS.tasks (a stop of
+ * what can be read beats no stop at all). A task whose zone is unreadable
+ * keeps `zone` undefined (only a stop of every zone takes it). At most
+ * LIMITS.tasks tasks; `partial` says some were left out. Undefined when the
+ * answer is not a list.
+ */
+export function ycStopTargetsOf(result) {
+  if (!Array.isArray(result)) {
+    return undefined;
+  }
+  const tasks = [];
+  const seen = new Set();
+  let partial = false;
+  // Linear and bounded: the body itself is capped (64 KB).
+  for (const task of result) {
+    const id = idOf(own(task, 'id'));
+    if (id === undefined || seen.has(id)) {
+      partial ||= id === undefined;
+      continue;
+    }
+    if (tasks.length >= LIMITS.tasks) {
+      partial = true;
+      break;
+    }
+    seen.add(id);
+    tasks.push({ id, zone: integerOf(own(task, 'output_id'), 0, LIMITS.zones - 1) });
+  }
+  return { tasks, partial };
 }
 
 /**

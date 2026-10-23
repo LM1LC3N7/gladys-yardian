@@ -39,12 +39,20 @@ https).
   watering: nothing sent. The zone waters for the configured length (10
   minutes by default, **60 minutes at most**); the controller closes the valve
   by itself at the end.
-- After a start, another start on the same controller waits until the zone is
-  read watering, or 60 s.
-- **Stopping is never refused**: not by the option, a pause asked by the
-  controller, a refused token or a recent start. A stop cancels the starts not
-  sent yet. If the zones are still read watering after it, the stop is sent
-  again (3 times at most, within 60 s), unless a start the controller took was
+- After a start, another start on the same controller is **refused at once**
+  ("try again in a minute") until the zone is read watering, or for 60 s.
+- **Stopping is never held** by the option, a pause asked by the controller,
+  a refused token or a recent start. It is refused, without sending anything,
+  only when: another controller answers at the address; the controller is no
+  longer at its address; no access token is set; on the C1 models, the
+  waterings running cannot be read (then Gladys watches for a minute and
+  sends the stop as soon as a read shows them). On a C1 with more than 32
+  waterings running, or some unreadable, the readable ones (32 at most) are
+  stopped.
+- A stop cancels the starts not sent yet. A start already sent before the
+  stop is watched too: if it is applied after the stop, the stop is sent
+  again. If the zones are still read watering after a stop, it is sent again
+  (3 times at most, within a minute), unless a start the controller took was
   sent after it.
 - On the Yardian and Yardian Pro without the C1 suffix, the controller only
   stops **every zone at once**: the Stop button of a zone stops them all.
@@ -65,4 +73,7 @@ controller** button succeeds (it tries once, never sooner than the interval).
 - One controller per integration.
 - The YC models (C1 suffix) and the rain delay and standby fields were not
   seen on a real answer: see TODO.md in the repository.
+- A watering started by a schedule of the controller: nothing says the stop
+  of the Yardian API stops it (unknown). If it does not, you see "sent,
+  without confirmation", then 3 resends: stop it from the Yardian app.
 - No schedules, no scene actions or widget yet.

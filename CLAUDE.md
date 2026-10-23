@@ -62,7 +62,9 @@ test/helpers/           fake controllers behind the client's `request`
   salted fingerprint of a REFUSED token, removed at the first success).
 - **Starting a zone opens a valve**: off by default, never a switch, decided
   on a fresh read, option checked again in `beforeSend`, capped length.
-  **Stopping is never held** (see the header of `src/app.js`).
+  **Stopping is never held** by the option, a pause, a refused token or a
+  guard; the few cases where it is refused unsent are listed in the docs and
+  in the header of `src/app.js`, and must stay documented exactly.
 - **Never read sooner than the interval** (restart included); 429/5xx and
   refused tokens are persisted, never retried in a loop.
 - **Built blind**: no controller was available. Every endpoint lives in

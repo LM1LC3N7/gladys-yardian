@@ -40,8 +40,15 @@
 //     one try, never retried in a loop. The identity is read first when the
 //     controller is not paused (another controller answering: refused; no
 //     answer: the stop leaves anyway). The YP API only stops every zone at
-//     once. After a stop, the follow-up reads that still see the zones
-//     watering send it again (60 s), unless a start really left after it.
+//     once; the YC one stops task by task (the readable ones, 32 at most).
+//     Refused unsent only when another controller answers, the controller is
+//     no longer at its address, no token is set, or the YC tasks cannot be
+//     read (then the guard is set and the next reads send it). After a stop,
+//     the follow-up reads that still see the zones watering send it again
+//     (3 times, 60 s), unless a start the controller took left after it. A
+//     start that left BEFORE the stop and has not settled keeps the stop
+//     guard; once it settles as "may have left", the guard is armed again.
+//     Both guards are on disk before the first byte of their command.
 //   - sent within 3.5 s of the click or refused unsent; answered by 4.3 s;
 //     confirmed only by a read showing the requested state; a request that
 //     may have reached the controller is never answered "not sent": "sent,
@@ -75,6 +82,7 @@ import {
   sameController,
   standbyOf,
   ycStandbyOf,
+  ycStopTargetsOf,
   ycTasksOf,
   ycZonesOf,
   ypActiveOf,
@@ -139,6 +147,8 @@ export class YardianApp {
     this.flights = new Map();
     /** id -> { seq, at, refused } of the last start that LEFT */
     this.lastStarts = new Map();
+    /** id -> starts that LEFT and are not settled yet (no answer, failure or timeout) */
+    this.startsInFlight = new Map();
     /** id -> handles of the reads after its last command */
     this.followUps = new Map();
     /** ids whose stop is being sent again */
@@ -453,6 +463,7 @@ export class YardianApp {
       this.warnOnce(`notController:${host}`, 'Yardian: no yid nor serial number in the answer');
       return false;
     }
+    identity.family = this.familyFor(identity, this.recordOf(identity, host));
     let reading;
     try {
       reading = await this.readState(host, token, identity, generation);
@@ -462,10 +473,26 @@ export class YardianApp {
     if (!reading || generation !== this.generation) {
       return false;
     }
+    if (!reading.active) {
+      // The zones watering are required. On a YC controller whose task list
+      // is only partly readable, a stop being watched is still sent again to
+      // the tasks that can be read.
+      const known = this.recordOf(identity, host);
+      if (known && reading.stopTasks?.length > 0) {
+        // -1: tasks whose zone is unreadable (only a stop of every zone takes them).
+        const zones = new Set(reading.stopTasks.map((t) => t.zone).filter((z) => z !== undefined));
+        this.reaffirmStop(
+          known,
+          { active: zones.size > 0 ? zones : new Set([-1]), tasks: reading.stopTasks },
+          origin,
+        );
+      }
+      return fail(new YardianError('invalid', { sent: true }));
+    }
     this.onSuccess(host);
     this.onTokenAccepted(token);
     const changed = this.remember(identity, host, reading.zones);
-    const record = this.recordOf(identity);
+    const record = this.recordOf(identity, host);
     status.failures = 0;
     status.next = status.lastTry + this.interval;
     status.error = undefined;
@@ -500,10 +527,13 @@ export class YardianApp {
       const controller = await secondary(() => this.client.ycController(host, token));
       const settings = await secondary(() => this.client.ycScheduleSettings(host, token));
       const outputs = await secondary(() => this.client.ycOutputs(host, token));
-      const parsed = ycTasksOf(await this.client.ycRunningTasks(host, token));
+      const raw = await this.client.ycRunningTasks(host, token);
+      const parsed = ycTasksOf(raw);
       if (generation !== this.generation) {
         return undefined;
       }
+      // For a stop only: the readable tasks, when the whole list is not.
+      reading.stopTasks = parsed ? undefined : ycStopTargetsOf(raw)?.tasks;
       reading.zones = ycZonesOf(outputs, identity.model);
       reading.rainDelayMinutes = controller
         ? rainDelayOf(controller.oper, controller.date)
@@ -521,9 +551,6 @@ export class YardianApp {
       reading.rainDelayMinutes = oper ? rainDelayOf(oper.oper, oper.date) : undefined;
       reading.standby = oper ? standbyOf(oper.oper?.iStandby, oper.date) : undefined;
       reading.active = active;
-    }
-    if (!reading.active) {
-      throw new YardianError('invalid', { sent: true });
     }
     return reading;
   }
@@ -551,14 +578,31 @@ export class YardianApp {
     }
   }
 
-  recordOf(identity) {
-    return this.records.find((record) => sameController(identity, record));
+  /**
+   * The record of an identity: the same yid (or serial number); else, at the
+   * same address, the record that nothing contradicts (a yid on one side, a
+   * serial number on the other: the same controller, its fields merged).
+   */
+  recordOf(identity, host) {
+    return (
+      this.records.find((record) => sameController(identity, record) === true) ??
+      (host
+        ? this.records.find(
+            (record) => record.host === host && sameController(identity, record) !== false,
+          )
+        : undefined)
+    );
+  }
+
+  /** The family of an answer without a model is the one known for the controller. */
+  familyFor(identity, record) {
+    return identity.model || !record ? identity.family : record.family;
   }
 
   /** Adds or updates the controller answering; true when a Gladys device changes. */
   remember(identity, host, zones) {
     const devices = this.data.devices;
-    let existing = this.recordOf(identity);
+    const existing = this.recordOf(identity, host);
     if (!existing && Object.keys(devices).length >= LIMITS.devices) {
       // The oldest one not at this address makes room.
       const oldest = this.records.find((r) => r.host !== host);
@@ -585,7 +629,7 @@ export class YardianApp {
       yid: identity.yid ?? existing?.yid,
       serial: identity.serial ?? existing?.serial,
       host,
-      family: identity.family,
+      family: this.familyFor(identity, existing),
       model: identity.model || existing?.model || '',
       name: identity.name || existing?.name || '',
       zones: this.mergeZones(existing?.zones ?? [], zones),
@@ -1006,7 +1050,11 @@ export class YardianApp {
     }
   }
 
-  /** The guard of a start, set right before it leaves (beforeSend) and saved at once. */
+  /**
+   * The guard of a start, set before its connection (the caller awaits its
+   * save: it is on disk before the first byte); its request number and time
+   * are set again in beforeSend, when the request really leaves.
+   */
   guardStart(record, number) {
     const guard = {
       zones: [number],
@@ -1015,8 +1063,57 @@ export class YardianApp {
       until: this.now() + TIMINGS.startGuard,
     };
     this.data.guards[record.id] = { ...this.data.guards[record.id], start: guard };
-    this.save();
     return guard;
+  }
+
+  /** A start whose request just left: tracked until it settles. */
+  trackStart(record, entry) {
+    if (!this.startsInFlight.has(record.id)) {
+      this.startsInFlight.set(record.id, new Set());
+    }
+    this.startsInFlight.get(record.id).add(entry);
+  }
+
+  /**
+   * A start that left has settled. `left`: it may have reached the
+   * controller (2xx, 5xx, silence, a dropped connection). A stop guard set
+   * after it left could not see it yet: the guard is armed again from now
+   * (only a read sent after this point may lift it) and the follow-up reads
+   * start again, so the stop is sent again if the zone waters.
+   */
+  settleStart(record, entry, left) {
+    this.startsInFlight.get(record.id)?.delete(entry);
+    const guard = this.data.guards[record.id]?.stop;
+    if (!left || !guard || entry.seq === undefined) {
+      return;
+    }
+    const before = guard.seq === undefined ? entry.at <= guard.at : entry.seq < guard.seq;
+    if (!before) {
+      return;
+    }
+    guard.seq = this.nextSequence();
+    guard.at = this.now();
+    guard.until = Math.max(guard.until, this.now() + TIMINGS.stopGuard);
+    guard.resends = 0;
+    this.logger.info(
+      `Yardian ${record.id}: a start sent before the stop settled, stop watched again`,
+    );
+    this.save();
+    this.followUp(record);
+  }
+
+  /** A start that left before a stop guard and has not settled: the guard cannot be lifted. */
+  startPendingBefore(record, guard) {
+    for (const entry of this.startsInFlight.get(record.id) ?? []) {
+      // Bounded: a start always settles within its answer deadline.
+      if (entry.seq === undefined || this.now() - entry.at > TIMINGS.inFlightMax) {
+        continue;
+      }
+      if (guard.seq === undefined ? entry.at <= guard.at : entry.seq < guard.seq) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /** The controller surely did nothing (a refusal): the guard of this start goes. */
@@ -1068,6 +1165,10 @@ export class YardianApp {
     const guard = this.clampGuard(this.data.guards[record.id]?.stop, TIMINGS.stopGuard);
     if (!guard) {
       return false;
+    }
+    // A start that left before the stop and is not settled may still water.
+    if (this.startPendingBefore(record, guard)) {
+      return true;
     }
     if (this.now() >= guard.until) {
       this.unguard(record, 'stop', guard);
@@ -1141,7 +1242,9 @@ export class YardianApp {
       ({ info: identity } = await this.client.deviceInfo(host, token, options()));
       identity = identityOf(identity);
       if (!identity.id) throw this.refusal(ERRORS.unknownState);
-      if (!sameController(identity, record)) {
+      // No field in common (a yid on one side, a serial on the other):
+      // nothing contradicts, the same controller.
+      if (sameController(identity, record) === false) {
         if (ticket.generation === this.generation && record.host === host) {
           this.logger.warn(`Yardian ${record.id} no longer answers at its address`);
           this.moved = [record.id, identity.id];
@@ -1182,30 +1285,38 @@ export class YardianApp {
     check();
     const minutes = Math.min(WATERING_MINUTES.max, this.config.wateringMinutes);
     this.logger.info(`Yardian ${record.id}: start zone ${zone.number} for ${minutes} min`);
-    let guard;
-    let sent;
+    // The guard is on disk before the first byte (a restart while the start
+    // is out keeps it); it goes if the start never leaves.
+    const guard = this.guardStart(record, zone.number);
+    await this.save();
+    // Counts as a newer start (over a stop) only once the controller took it.
+    const sent = { seq: undefined, at: undefined, accepted: false };
     try {
+      check();
       await this.client.startZone(host, record.family, token, zone.number - 1, minutes * 60, {
         timeout: Math.max(100, answerBy - this.now()),
         signal: ticket.abort.signal,
         sendWithin: sendBy - this.now(),
-        // The very last check, right before the request leaves; the guard
-        // is set (and saved) before the first byte.
+        // The very last check, right before the request leaves.
         beforeSend: () => {
           check();
           ticket.sent = true;
-          guard = this.guardStart(record, zone.number);
-          // Counts as a newer start (over a stop) only once the controller took it.
-          sent = { seq: guard.seq, at: guard.at, accepted: false };
+          guard.seq = this.nextSequence();
+          guard.at = this.now();
+          sent.seq = guard.seq;
+          sent.at = guard.at;
           this.lastStarts.set(record.id, sent);
+          this.trackStart(record, sent);
         },
       });
     } catch (err) {
-      if (err.beforeSend) {
+      if (err.refusal || err.beforeSend) {
+        this.unguard(record, 'start', guard);
         throw err;
       }
       const reason = reasonOf(err);
       if (!err.sent) {
+        this.settleStart(record, sent, false);
         this.unguard(record, 'start', guard);
         this.logger.warn(`Yardian ${record.id}: start NOT sent (${reason})`);
         if (err.kind === 'cancelled' || ticket.cancelled) throw this.refusal(ERRORS.cancelled);
@@ -1219,6 +1330,7 @@ export class YardianApp {
       this.onFailure(host, err);
       if (refusedByController) {
         // The controller did not take it: it never counts as a newer start.
+        this.settleStart(record, sent, false);
         this.unguard(record, 'start', guard);
         this.logger.warn(`Yardian ${record.id}: start refused (${reason})`);
         if (err.kind === 'token') {
@@ -1229,11 +1341,13 @@ export class YardianApp {
       }
       // A silence, a dropped connection, a 5xx: it may have reached the
       // controller, the guard stays.
+      this.settleStart(record, sent, true);
       this.followUp(record);
       this.logger.warn(`Yardian ${record.id}: start sent, NOT confirmed (${reason})`);
       throw this.refusal(ERRORS.sentUnconfirmed(reason));
     }
     sent.accepted = true;
+    this.settleStart(record, sent, true);
     this.onTokenAccepted(token, { command: true });
     // Confirmed only by a read showing the zone watering.
     const confirmed = await this.confirm(record, token, answerBy, (seen) =>
@@ -1283,7 +1397,10 @@ export class YardianApp {
     }
   }
 
-  /** The guard of a stop, set right before it leaves and saved at once. */
+  /**
+   * The guard of a stop, set before its connection (the caller awaits its
+   * save); its request number is set again when the stop really leaves.
+   */
   guardStop(record, zones) {
     const previous = this.data.guards[record.id]?.stop;
     const live = previous && previous.until > this.now() ? previous : undefined;
@@ -1302,7 +1419,6 @@ export class YardianApp {
       until: this.now() + TIMINGS.stopGuard,
     };
     this.data.guards[record.id] = { ...this.data.guards[record.id], stop: guard };
-    this.save();
     return guard;
   }
 
@@ -1329,7 +1445,7 @@ export class YardianApp {
           timeout: Math.min(TIMINGS.stopIdentityTimeout, left() - 200),
         });
         const identity = identityOf(info);
-        if (identity.id && !sameController(identity, record)) {
+        if (identity.id && sameController(identity, record) === false) {
           throw this.refusal(ERRORS.unknownDevice);
         }
       } catch (err) {
@@ -1339,17 +1455,28 @@ export class YardianApp {
     }
     let tasks;
     if (record.family === FAMILY.YC) {
-      // The YC API stops tasks by id: the running ones are read first.
+      // The YC API stops tasks by id (it has no stop of every zone): the
+      // running ones are read first; the readable ones are stopped even when
+      // others are not readable or there are too many.
+      let failure;
       try {
-        if (left() <= 0) throw this.refusal(ERRORS.tooSlow);
-        tasks = ycTasksOf(await this.client.ycRunningTasks(host, token, { timeout: left() }));
+        if (left() > 0) {
+          tasks = ycStopTargetsOf(
+            await this.client.ycRunningTasks(host, token, { timeout: left() }),
+          );
+        }
       } catch (err) {
-        if (err.refusal) throw err;
+        failure = err;
         this.onFailure(host, err);
-        throw this.refusal(ERRORS.unknownState);
       }
       if (!tasks) {
-        throw this.refusal(ERRORS.unknownState);
+        // Nothing can be sent now: the guard watches, and the next reads that
+        // see the zones watering send the stop.
+        this.guardStop(record, zones);
+        await this.save();
+        this.followUp(record);
+        this.logger.warn(`Yardian ${record.id}: running tasks unreadable (${reasonOf(failure)})`);
+        throw this.refusal(ERRORS.stopTasksUnknown);
       }
     }
     const outcome = await this.sendStop(record, zones, { token, tasks, sendBy, answerBy });
@@ -1375,11 +1502,21 @@ export class YardianApp {
    */
   async sendStop(record, zones, { token, tasks, sendBy, answerBy, resend }) {
     const host = record.host;
-    // A resend keeps the guard of its stop (never a longer watch).
-    let guard = resend;
+    // A resend keeps the guard of its stop (never a longer watch); a new
+    // stop sets its guard and has it on disk before the first byte.
+    const guard = resend ?? this.guardStop(record, zones);
+    if (!resend) {
+      await this.save();
+    }
+    let left = false;
     const beforeSend = () => {
       if (this.now() > sendBy) throw this.refusal(ERRORS.tooSlow);
-      if (!guard) guard = this.guardStop(record, zones);
+      if (!resend && !left) {
+        // The stop leaves now: only a start leaving after this point is newer.
+        left = true;
+        guard.seq = this.nextSequence();
+        guard.at = this.now();
+      }
     };
     const options = () => ({
       timeout: Math.max(100, answerBy - this.now()),
@@ -1392,8 +1529,9 @@ export class YardianApp {
         (task) => zones === 'all' || zones.includes(task.zone + 1),
       );
       if (targets.length === 0) {
-        // Nothing running: nothing to stop, the guard still watches.
-        guard ??= this.guardStop(record, zones);
+        // Nothing running (yet: a start may still be on its way): nothing to
+        // stop, the guard still watches.
+        this.followUp(record);
         return { sent: true };
       }
       requests = targets.map((task) => this.client.ycStopTask(host, token, task.id, options()));
@@ -1410,6 +1548,8 @@ export class YardianApp {
     const anySent = failures.some((f) => f.sent) || failures.length < results.length;
     const reason = err.refusal ? err.message : reasonOf(err);
     if (!anySent) {
+      // The guard stays: the next reads that see the zones watering send it.
+      this.followUp(record);
       this.logger.warn(`Yardian ${record.id}: stop NOT sent (${reason})`);
       return {
         sent: false,

@@ -38,6 +38,7 @@ export function controllers() {
     },
     '192.168.1.61': {
       token: TOKEN,
+      yc: true,
       info: { name: 'Back', model: 'PRO1906C1', serialNumber: 'SN0002', yid: 'yid0002' },
       controller: { iRainDelay: 7200 },
       settings: { standby_mode: false },
@@ -133,7 +134,8 @@ export function fakeNetwork(table = controllers()) {
     if (headers?.['Yardian-Token'] !== device.token) {
       return json({ iCode: -1000 });
     }
-    const yc = /C\d+$/.test(device.info.model);
+    // The API family is the hardware's, whatever the model answered.
+    const yc = device.yc ?? /C\d+$/.test(device.info.model);
     if (port === 880 && key === 'GET /API_GET_DEVICEINFO') {
       return json({ result: device.info });
     }

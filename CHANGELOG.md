@@ -22,9 +22,19 @@ the notes of the version's GitHub Release.
 - Starting a zone is off by default ("Allow starting the zones"), decided on
   the identity and the zones watering read just before, for the configured
   length (60 minutes at most), with a guard against a second start.
-- Stopping is never refused (option, pause, refused token, guard), cancels the
-  starts not sent yet, and is sent again while the zones are still read
-  watering (3 times at most).
+- Stopping is never held by the option, a pause, a refused token or a guard;
+  it cancels the starts not sent yet, and is sent again while the zones are
+  still read watering (3 times at most). It is refused unsent only when
+  another controller answers at the address, the controller is no longer at
+  its address, no token is set, or the running waterings of a C1 model cannot
+  be read (then it is sent as soon as a read shows them, within a minute).
+- A start sent before a stop but applied after it is caught: the stop keeps
+  watching until that start settles, then is sent again if the zone waters.
+- On a C1 model with more than 32 running waterings, or unreadable ones, the
+  readable ones (32 at most) are stopped.
+- An answer giving only the serial number of a controller known by its yid
+  (or the reverse) is the same controller; an answer without a model keeps
+  the known API family.
 - Reads never sooner than the interval, even after a restart; 429/5xx pauses
   and refused tokens persisted in /data (a salted fingerprint, never the
   token); a "Check the controller" button.

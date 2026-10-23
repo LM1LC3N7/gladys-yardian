@@ -95,6 +95,8 @@ export const TIMINGS = {
    * the stop again (unless a start really left after it), for this long.
    */
   stopGuard: 60_000,
+  /** A start that left is waited for that long at most (it settles by its answer deadline). */
+  inFlightMax: 10_000,
   /** A stop is sent again at most this many times. */
   stopResends: 3,
   /** Transient failures: the next reads, never sooner than the interval. */
