@@ -10,6 +10,8 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-23
+
 ### Added
 
 - First version: a Yardian sprinkler controller read over its local HTTP API
@@ -41,4 +43,5 @@ the notes of the version's GitHub Release.
   and refused tokens persisted in /data (a salted fingerprint, never the
   token); a "Check the controller" button.
 
-[Unreleased]: https://github.com/LM1LC3N7/gladys-yardian/commits/main
+[Unreleased]: https://github.com/LM1LC3N7/gladys-yardian/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/LM1LC3N7/gladys-yardian/releases/tag/v0.1.1

@@ -1,6 +1,6 @@
 {
   "name": "gladys-yardian",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Gladys Assistant external integration for Yardian sprinkler controllers (zones, watering now, rain delay, standby, start and stop a zone), over their local HTTP API. Unofficial, not affiliated with Aeon Matrix.",
   "type": "module",
