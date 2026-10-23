@@ -10,6 +10,8 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-10-23
+
 ### Fixed
 
 - After a command, a fourth follow-up read at 55 s: a start applied late is
@@ -48,5 +50,6 @@ the notes of the version's GitHub Release.
   and refused tokens persisted in /data (a salted fingerprint, never the
   token); a "Check the controller" button.
 
-[Unreleased]: https://github.com/LM1LC3N7/gladys-yardian/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/LM1LC3N7/gladys-yardian/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/LM1LC3N7/gladys-yardian/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/LM1LC3N7/gladys-yardian/releases/tag/v0.1.1

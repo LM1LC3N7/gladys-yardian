@@ -6,8 +6,8 @@
     "en": "Yardian sprinkler controllers, locally: zones, watering, rain delay, start and stop.",
     "fr": "Programmateurs d'arrosage Yardian, en local : zones, arrosage, report pluie, marche, arrêt."
   },
-  "version": "0.1.1",
-  "docker_image": "ghcr.io/lm1lc3n7/gladys-yardian:0.1.1",
+  "version": "0.1.2",
+  "docker_image": "ghcr.io/lm1lc3n7/gladys-yardian:0.1.2",
   "gladys_version": ">=5.1.0",
   "cover_image": "https://raw.githubusercontent.com/LM1LC3N7/gladys-yardian/main/cover.png",
   "categories": ["environment", "appliances"],
