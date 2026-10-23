@@ -1,67 +1,78 @@
-# Template de démonstration
+# Yardian
 
-Ceci est la documentation utilisateur de l'intégration. Gladys ré-héberge ce
-fichier et affiche un lien **Documentation** permanent vers lui dans l'écran
-de configuration (dans la langue de l'utilisateur, avec l'anglais en repli) —
-c'est au moment de configurer que l'utilisateur en a le plus besoin. Gardez
-les courtes indications d'accueil dans les blocs `section` du `config_schema`
-du manifest ; mettez ici le pas-à-pas détaillé (captures d'écran, dépannage…).
+Intégration Gladys Assistant non officielle pour les programmateurs
+d'arrosage connectés **Yardian** (Yardian, Yardian Pro, Yardian Pro C1), par
+leur API HTTP **locale** : pas de cloud Yardian, pas de compte. Sans lien avec
+Aeon Matrix ni Yardian.
+
+**Jamais testé avec un vrai appareil** : construite d'après la bibliothèque du
+fabricant (pyyardian 1.4.2, celle de l'intégration Home Assistant). Merci de
+signaler ce qui marche et ce qui ne marche pas.
 
 ## Ce que vous obtenez
 
-Six appareils de démonstration apparaissent après l'installation : une
-station météo (vraies données Open-Meteo), un interrupteur, une lampe
-variable, une prise connectée avec mesure de puissance, un détecteur de
-mouvement et une caméra.
+- **Le programmateur** : arrosage en cours (oui/non), les zones arrosées en
+  ce moment, le report pour pluie restant (minutes), la veille, et un bouton
+  **Arrêter tout l'arrosage**.
+- **Chaque zone activée** : arrosage en cours (oui/non), un bouton
+  **Démarrer l'arrosage** et un bouton **Arrêter l'arrosage**.
 
-## Configuration
+L'arrosage n'est jamais un interrupteur : un « allume/éteins tout » d'un
+assistant vocal, de HomeKit ou d'une scène sur les interrupteurs ne peut
+jamais ouvrir une vanne.
 
-1. Ouvrez l'onglet **Configuration** de l'intégration.
-2. Renseignez la **latitude** et la **longitude** que la station météo de
-   démonstration doit observer (Paris par défaut), et choisissez votre unité
-   de température. L'**intervalle de rafraîchissement** règle la fréquence
-   de lecture de la station météo et de la puissance de la prise : toutes
-   les 5 minutes par défaut, toutes les minutes au plus.
-3. Enregistrez : les appareils apparaissent dans l'onglet **Découverte**,
-   prêts à être ajoutés.
+## Mise en route
 
-Le réglage **Préférer la connexion locale** pilote la prise de
-démonstration : elle affiche en badge le canal réellement utilisé (local ou
-cloud), avec un point orange quand elle fonctionne en mode dégradé (local
-refusé, bascule cloud).
+1. Donnez au programmateur une adresse IP fixe dans votre box.
+2. Trouvez son **jeton d'accès** dans l'application Yardian (réglages du
+   programmateur).
+3. Dans Gladys, ouvrez l'intégration, saisissez l'adresse et le jeton,
+   enregistrez.
+4. Ajoutez le programmateur et ses zones depuis l'onglet **Découverte**.
 
-## Actions
+Le jeton est gardé par Gladys dans sa base, jamais réaffiché, et envoyé
+seulement à votre programmateur, en clair sur votre réseau local (le
+programmateur n'a pas de https).
 
-- **Tester le fournisseur météo** — effectue une requête en direct vers
-  Open-Meteo et affiche la température et l'humidité actuelles sous le
-  bouton.
-- **Identifier un appareil** — choisissez un de vos appareils dans la liste
-  et il se signale (la lampe de démonstration « clignote » dans les logs).
+## Démarrer et arrêter
 
-## Scènes
+- **Démarrer une zone ouvre une vanne : c'est désactivé par défaut.** Activez
+  **Autoriser le démarrage des zones** pour utiliser les boutons Démarrer.
+  Sans cela, le tableau de bord, les scènes et les assistants vocaux peuvent
+  seulement lire et arrêter.
+- Avant chaque démarrage, Gladys lit le programmateur : un autre programmateur
+  à l'adresse, ou des zones en arrosage illisibles : refusé ; la zone déjà en
+  arrosage : rien n'est envoyé. La zone arrose pendant la durée réglée (10
+  minutes par défaut, **60 minutes au plus**) ; le programmateur referme seul
+  la vanne à la fin.
+- Après un démarrage, un autre démarrage sur le même programmateur attend que
+  la zone soit lue en arrosage, ou 60 s.
+- **Arrêter n'est jamais refusé** : ni par l'option, ni par une pause demandée
+  par le programmateur, ni par un jeton refusé, ni par un démarrage récent. Un
+  arrêt annule les démarrages pas encore envoyés. Si les zones sont encore
+  lues en arrosage après lui, l'arrêt est renvoyé (3 fois au plus, dans les
+  60 s), sauf si un démarrage accepté par le programmateur est parti après.
+- Sur les Yardian et Yardian Pro sans le suffixe C1, le programmateur n'arrête
+  que **toutes les zones à la fois** : le bouton Arrêter d'une zone les arrête
+  toutes.
+- Une commande part dans les 3,5 s ou est refusée sans être envoyée.
+  « Envoyée, sans confirmation » veut dire que le programmateur l'a peut-être
+  prise mais qu'elle n'a pas encore été relue : vérifiez la zone quelques
+  secondes plus tard.
 
-L'intégration ajoute ses propres cartes à l'éditeur de scènes (Gladys 5.1
-ou plus récent), dans la catégorie **Intégrations** :
+## Rafraîchissement
 
-- **Mouvement détecté** (déclencheur) — lance la scène quand un détecteur
-  de démonstration voit bouger quelque chose. Choisissez éventuellement le
-  détecteur et ce qui a bougé (personne, animal) ; laissés vides, toute
-  détection correspond. Les actions suivantes peuvent lire ce qui a bougé
-  avec `{{triggerEvent.data.target}}`.
-- **Identifier un appareil** (action) — fait se signaler l'appareil choisi.
-  Elle indique si l'appareil a pu se signaler, pour que les actions
-  suivantes puissent en dépendre.
+Le programmateur est lu toutes les 30 s par défaut (10 à 600 s), jamais plus
+souvent : ni après un redémarrage, ni après une reconnexion, une recherche ou
+le bouton Vérifier. S'il demande d'attendre (HTTP 429 ou 5xx), les lectures
+font une pause d'1 minute à 6 heures. S'il refuse le jeton, les lectures
+s'arrêtent jusqu'à ce que vous enregistriez un autre jeton ou que le bouton
+**Vérifier le programmateur** réussisse (il réessaie une fois, jamais plus
+vite que l'intervalle).
 
-## Tableau de bord
+## Limites
 
-Ajoutez le widget **État de la démo** à un tableau de bord : il affiche en
-direct la température de la station météo et la puissance de la prise du
-bureau, la connexion utilisée par la prise (en orange si dégradée) et la
-position observée. Son bouton **Identifier la lampe** fait se signaler la
-lampe de démonstration.
-
-## Dépannage
-
-L'intégration journalise tout ce qu'elle fait : consultez les logs de
-l'intégration depuis l'interface Gladys (ou `docker logs` sur l'hôte) avec
-`LOG_LEVEL=debug` pour le détail complet.
+- Un seul programmateur par intégration.
+- Les modèles YC (suffixe C1) et les champs du report pour pluie et de la
+  veille n'ont pas été vus sur une vraie réponse : voir TODO.md dans le dépôt.
+- Pas encore de programmes, d'actions de scène ni de widget.

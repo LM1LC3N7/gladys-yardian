@@ -1,61 +1,68 @@
-# Demo Devices Template
+# Yardian
 
-This is the user documentation of the integration. Gladys re-hosts this file
-and shows a permanent **Documentation** link to it in the Configuration screen
-(in the user's language, with English as the fallback) — it is when
-configuring that the user needs it most. Keep the short onboarding hints in
-the `section` blocks of the manifest `config_schema`; put the long
-step-by-step (screenshots, troubleshooting…) here.
+Unofficial Gladys Assistant integration for the **Yardian** smart sprinkler
+controllers (Yardian, Yardian Pro, Yardian Pro C1), over their **local** HTTP
+API: no Yardian cloud, no account. Not affiliated with Aeon Matrix or Yardian.
+
+**Never tested with a real device**: it was built from the library of the
+manufacturer (pyyardian 1.4.2, the one of the Home Assistant integration).
+Please report what works and what does not.
 
 ## What you get
 
-Six demo devices show up after installation: a weather station (real data
-from Open-Meteo), a switch, a dimmable light, a smart plug with power
-metering, a motion sensor and a camera.
+- **The controller**: watering now (yes/no), the zones watering now, the rain
+  delay left (minutes), the standby, and a **Stop all watering** button.
+- **Each enabled zone**: watering now (yes/no), a **Start watering** button and
+  a **Stop watering** button.
 
-## Configuration
+Watering is never a switch: a "turn everything on/off" from a voice assistant,
+HomeKit or a scene on switches can never open a valve.
 
-1. Open the **Configuration** tab of the integration.
-2. Set the **latitude** and **longitude** the demo weather station should
-   observe (they default to Paris), and pick your temperature unit.
-   The **refresh interval** sets how often the weather station and the
-   plug's power are read: every 5 minutes by default, every minute at most.
-3. Save: the devices appear in the **Discovery** tab, ready to be added.
+## Setup
 
-The **Prefer the local connection** toggle drives the demo plug: it reports
-the channel it actually uses as a badge (local or cloud), with an orange dot
-when it runs degraded (local refused, cloud fallback).
+1. Give the controller a fixed IP address in your router.
+2. Find its **access token** in the Yardian app (settings of the controller).
+3. In Gladys, open the integration, type the address and the token, save.
+4. Add the controller and its zones from the **Discovery** tab.
 
-## Actions
+The token is kept by Gladys in its database, never shown again, and sent only
+to your controller, in clear on your local network (the controller has no
+https).
 
-- **Test the weather provider** — performs a live request to Open-Meteo and
-  shows the current temperature and humidity under the button.
-- **Identify a device** — pick one of your devices in the list and it will
-  signal itself (the demo light "blinks" in the logs).
+## Starting and stopping
 
-## Scenes
+- **Starting a zone opens a valve: it is off by default.** Turn on **Allow
+  starting the zones** to use the Start buttons. Without it, the dashboard,
+  the scenes and the voice assistants can only read and stop.
+- Before each start, Gladys reads the controller: another controller at the
+  address, or zones watering it cannot read: refused; the zone already
+  watering: nothing sent. The zone waters for the configured length (10
+  minutes by default, **60 minutes at most**); the controller closes the valve
+  by itself at the end.
+- After a start, another start on the same controller waits until the zone is
+  read watering, or 60 s.
+- **Stopping is never refused**: not by the option, a pause asked by the
+  controller, a refused token or a recent start. A stop cancels the starts not
+  sent yet. If the zones are still read watering after it, the stop is sent
+  again (3 times at most, within 60 s), unless a start the controller took was
+  sent after it.
+- On the Yardian and Yardian Pro without the C1 suffix, the controller only
+  stops **every zone at once**: the Stop button of a zone stops them all.
+- A command leaves within 3.5 s or is refused unsent. "Sent, without
+  confirmation" means the controller may have taken it but it was not read
+  back yet: check the zone a few seconds later.
 
-The integration adds its own cards to the scene editor (Gladys 5.1 or
-later), under the **Integrations** category:
+## Refresh
 
-- **Motion detected** (trigger) — starts the scene when a demo motion sensor
-  sees something move. Optionally pick the sensor and what moved (person,
-  animal); left empty, any detection matches. The following actions can
-  read what moved with `{{triggerEvent.data.target}}`.
-- **Identify a device** (action) — makes the chosen device signal itself.
-  It returns whether the device could signal itself, so the following
-  actions can depend on it.
+The controller is read every 30 s by default (10 to 600 s), never sooner: not
+after a restart, a reconnection, a scan or the Check button. If it asks to
+wait (HTTP 429 or 5xx), reads pause for 1 minute to 6 hours. If it refuses the
+token, reads stop until you save another token or the **Check the
+controller** button succeeds (it tries once, never sooner than the interval).
 
-## Dashboard
+## Limits
 
-Add the **Demo status** widget to a dashboard: it shows the live
-temperature of the weather station and the power of the office plug, the
-connection the plug currently uses (orange when degraded) and the observed
-location. Its **Identify the light** button makes the demo light signal
-itself.
-
-## Troubleshooting
-
-The integration logs everything it does: check the integration logs from the
-Gladys UI (or `docker logs` on the host) with `LOG_LEVEL=debug` for the full
-detail.
+- One controller per integration.
+- The YC models (C1 suffix) and the rain delay and standby fields were not
+  seen on a real answer: see TODO.md in the repository.
+- No schedules, no scene actions or widget yet.
